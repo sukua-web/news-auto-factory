@@ -2,7 +2,7 @@ name: Run Card News Factory
 
 on:
   schedule:
-    - cron: '0 9 * * *' # 매일 아침 9시 자동 실행 (필요에 따라 조절)
+    - cron: '30 20 * * *' # 매일 아침 5시 30분 자동 실행 영국시간기준이라 9시간 뺌 (필요에 따라 조절)
   workflow_dispatch: # 수동 실행 버튼 제공
 
 jobs:
