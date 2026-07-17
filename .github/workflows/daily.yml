@@ -1,0 +1,31 @@
+name: Daily Auto Cardnews Factory
+
+on:
+  schedule:
+    # 매일 한국 시간(KST) 오전 9시 정각에 자동 실행 (UTC 시간 기준 00:00)
+    - cron: '0 0 * * *'
+  workflow_dispatch: # 버튼 눌러서 수동으로 즉시 실행도 가능하게 설정
+
+jobs:
+  run-factory:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 코드 체크아웃
+      uses: actions/checkout@v3
+
+    - name: 파이썬 설치
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+
+    - name: 필요 패키지 설치
+      run: |
+        pip install google-generativeai pillow requests
+
+    - name: 카드뉴스 제작 및 메일 발송 실행
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
+        EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
+        EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+      run: python auto_factory.py
