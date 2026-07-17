@@ -64,14 +64,8 @@ def draw_text_outline(draw, position, text, font, text_color, outline_color, max
 
 # 4. 카드뉴스 메인 제작 로직
 def create_card_news(user_topic):
-    # 사용 가능한 Gemini 모델 스캔
+    # 'flash' 모델을 자동으로 찾지 않고, 검증된 모델로 고정합니다.
     model_name = 'gemini-1.5-flash'
-    try:
-        for m in genai.list_models():
-            if 'generateContent' in m.supported_generation_methods and 'flash' in m.name.lower():
-                model_name = m.name.replace('models/', '')
-                break
-    except: pass
     
     model = genai.GenerativeModel(model_name)
     prompt = f"주제: '{user_topic}'\n인스타그램 카드뉴스 5장 세트 기획을 작성해.\nslide_num, title, subtitle, description, keyword(영문1단어) 키를 가진 JSON 배열만 출력해."
