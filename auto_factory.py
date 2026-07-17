@@ -3,15 +3,18 @@ import json
 import smtplib
 import requests
 import xml.etree.ElementTree as ET
-from io import BytesIO  # 이미지 처리를 위한 필수 모듈
+from io import BytesIO
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.image import MIMEImage
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
-import google.generativeai as genai
+
+# [최신 규격] 구글 최신 라이브러리로 임포트 변경
+from google import genai
+from google.genai import types
 
 # ==========================================
-# 1. 환경 변수 설정 및 API 키 연결
+# 1. 환경 변수 설정 및 API 클라이언트 초기화
 # ==========================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
@@ -21,10 +24,11 @@ EMAIL_RECEIVER = os.environ.get("EMAIL_RECEIVER")
 if not GEMINI_API_KEY:
     print("⚠️ 에러: GEMINI_API_KEY가 설정되지 않았습니다.")
 
-genai.configure(api_key=GEMINI_API_KEY)
+# [최신 규격] Client 객체 생성 방식
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 # ==========================================
-# 2. 오늘의 뉴스 자동 수집 로직 (Google RSS)
+# 2. 오늘의 뉴스 자동 수집 로직
 # ==========================================
 def get_today_news_topic():
     try:
@@ -33,7 +37,6 @@ def get_today_news_topic():
         root = ET.fromstring(response.content)
         top_news_title = root.find('.//item/title').text
         
-        # 언론사 이름 제거 (예: "뉴스제목 - 연합뉴스" -> "뉴스제목")
         if " - " in top_news_title:
             top_news_title = top_news_title.split(" - ")[0]
         return top_news_title
@@ -42,7 +45,7 @@ def get_today_news_topic():
         return "오늘의 주요 시사 상식 및 트렌드 요약"
 
 # ==========================================
-# 3. 텍스트 자동 줄바꿈 및 테두리(아웃라인) 렌더링
+# 3. 텍스트 자동 줄바꿈 및 테두리 렌더링
 # ==========================================
 def wrap_text(text, font, max_width, draw):
     lines, current_line = [], ""
@@ -64,36 +67,34 @@ def draw_text_outline(draw, position, text, font, text_color, outline_color, max
     
     for line, h in zip(lines, line_heights):
         x, y = position[0], current_y + h // 2
-        # 아웃라인(테두리) 그리기
         for dx in [-2, 0, 2]:
             for dy in [-2, 0, 2]:
                 if dx != 0 or dy != 0:
                     draw.text((x + dx, y + dy), line, fill=outline_color, font=font, anchor="mm", align="center")
-        # 중앙 텍스트 그리기
         draw.text((x, y), line, fill=text_color, font=font, anchor="mm", align="center")
         current_y += h + 20
 
 # ==========================================
-# 4. 카드뉴스 메인 제작 로직 (AI 기획 + 디자인)
+# 4. 카드뉴스 메인 제작 로직
 # ==========================================
 def create_card_news(user_topic):
-    # [에러 해결] 더 이상 존재하지 않는 모델 대신 가장 안정적인 1.5-flash 모델 강제 지정
-    model = genai.GenerativeModel('gemini-1.5-flash')
-    
     prompt = f"주제: '{user_topic}'\n인스타그램 카드뉴스 5장 세트 기획을 작성해.\nslide_num, title, subtitle, description, keyword(영문1단어) 키를 가진 JSON 배열만 출력해."
     
     print("🤖 AI 기획 생성 중...")
-    # JSON 형태로만 응답하도록 강제
-    response = model.generate_content(
-        prompt, 
-        generation_config={"response_mime_type": "application/json"}
+    
+    # [최신 규격] 모델명을 1.5-flash로 강제하고, 최신 제너레이션 문법 적용
+    response = client.models.generate_content(
+        model='gemini-1.5-flash',
+        contents=prompt,
+        config=types.GenerateContentConfig(
+            response_mime_type="application/json",
+        )
     )
     
     slides_data = json.loads(response.text)
     if isinstance(slides_data, dict) and "slides" in slides_data:
         slides_data = slides_data["slides"]
 
-    # 폰트 다운로드 (캐싱 처리)
     font_path = "CustomFont.otf"
     if not os.path.exists(font_path):
         print("📥 폰트 다운로드 중...")
@@ -114,7 +115,6 @@ def create_card_news(user_topic):
         img_url = f"https://loremflickr.com/1080/1350/{keyword}"
         
         try:
-            # 봇 차단 방지를 위한 User-Agent 헤더 추가
             headers = {'User-Agent': 'Mozilla/5.0'}
             img_data = requests.get(img_url, headers=headers, timeout=10).content
             bg = Image.open(BytesIO(img_data))
@@ -122,15 +122,12 @@ def create_card_news(user_topic):
             print(f"⚠️ {idx+1}번 슬라이드 이미지 다운로드 실패, 단색 배경 대체: {e}")
             bg = Image.new("RGB", (width, height), color="#0F172A")
             
-        # 이미지 어둡게 처리 (글씨가 잘 보이도록)
         bg_dark = ImageEnhance.Brightness(bg).enhance(0.2)
         draw = ImageDraw.Draw(bg_dark)
         
-        # 외곽선 및 슬라이드 번호
         draw.rectangle([60, 60, width - 60, height - 60], outline="#FFFFFF", width=3)
         draw.text((width - 120, 120), f"{idx+1} / 5", fill="#9CA3AF", font=desc_font, anchor="rt")
         
-        # 텍스트 배치
         title_color = "#FBBF24" if idx == 0 else "#FFFFFF"
         draw_text_outline(draw, (width // 2, height // 3), str(slide.get("title", "")), title_font, title_color, "#000000", width - 240)
         draw_text_outline(draw, (width // 2, height // 2 + 100), str(slide.get("subtitle", "")), subtitle_font, "#FFFFFF", "#000000", width - 240)
@@ -144,7 +141,7 @@ def create_card_news(user_topic):
     return image_paths
 
 # ==========================================
-# 5. 생성된 이미지를 이메일로 발송 (Gmail)
+# 5. 생성된 이미지를 이메일로 발송
 # ==========================================
 def send_email(topic, image_paths):
     if not all([EMAIL_SENDER, EMAIL_PASSWORD, EMAIL_RECEIVER]):
