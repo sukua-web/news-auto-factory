@@ -1,6 +1,5 @@
 import os
 import json
-import time
 import smtplib
 import requests
 import xml.etree.ElementTree as ET
@@ -11,29 +10,40 @@ from email.mime.image import MIMEImage
 from PIL import Image, ImageDraw, ImageFont, ImageEnhance
 import google.generativeai as genai
 
-# 1. 환경 변수 설정 (코랩 설정 혹은 서버 환경 변수에서 로드)
+# ==========================================
+# 1. 환경 변수 설정 및 API 키 연결
+# ==========================================
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 EMAIL_SENDER = os.environ.get("EMAIL_SENDER")
 EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.environ.get("EMAIL_RECEIVER")
 
+if not GEMINI_API_KEY:
+    print("⚠️ 에러: GEMINI_API_KEY가 설정되지 않았습니다.")
+
 genai.configure(api_key=GEMINI_API_KEY)
 
-# 2. 뉴스 수집
+# ==========================================
+# 2. 오늘의 뉴스 자동 수집 로직 (Google RSS)
+# ==========================================
 def get_today_news_topic():
     try:
         url = "https://news.google.com/rss?hl=ko&gl=KR&ceid=KR:ko"
         response = requests.get(url, timeout=10)
         root = ET.fromstring(response.content)
         top_news_title = root.find('.//item/title').text
+        
+        # 언론사 이름 제거 (예: "뉴스제목 - 연합뉴스" -> "뉴스제목")
         if " - " in top_news_title:
             top_news_title = top_news_title.split(" - ")[0]
         return top_news_title
     except Exception as e:
-        print(f"뉴스 수집 실패: {e}")
-        return "오늘의 주요 이슈 요약"
+        print(f"⚠️ 뉴스 수집 실패 (대체 주제 사용): {e}")
+        return "오늘의 주요 시사 상식 및 트렌드 요약"
 
-# 3. 텍스트 처리
+# ==========================================
+# 3. 텍스트 자동 줄바꿈 및 테두리(아웃라인) 렌더링
+# ==========================================
 def wrap_text(text, font, max_width, draw):
     lines, current_line = [], ""
     for char in text:
@@ -51,30 +61,45 @@ def draw_text_outline(draw, position, text, font, text_color, outline_color, max
     lines = wrap_text(text, font, max_width, draw)
     line_heights = [draw.textbbox((0, 0), line, font=font)[3] - draw.textbbox((0, 0), line, font=font)[1] for line in lines]
     current_y = position[1] - (sum(line_heights) + 20 * (len(lines) - 1)) // 2
+    
     for line, h in zip(lines, line_heights):
         x, y = position[0], current_y + h // 2
+        # 아웃라인(테두리) 그리기
         for dx in [-2, 0, 2]:
             for dy in [-2, 0, 2]:
                 if dx != 0 or dy != 0:
                     draw.text((x + dx, y + dy), line, fill=outline_color, font=font, anchor="mm", align="center")
+        # 중앙 텍스트 그리기
         draw.text((x, y), line, fill=text_color, font=font, anchor="mm", align="center")
         current_y += h + 20
 
-# 4. 카드뉴스 제작
+# ==========================================
+# 4. 카드뉴스 메인 제작 로직 (AI 기획 + 디자인)
+# ==========================================
 def create_card_news(user_topic):
-    # 안정적인 모델로 지정
+    # [에러 해결] 더 이상 존재하지 않는 모델 대신 가장 안정적인 1.5-flash 모델 강제 지정
     model = genai.GenerativeModel('gemini-1.5-flash')
+    
     prompt = f"주제: '{user_topic}'\n인스타그램 카드뉴스 5장 세트 기획을 작성해.\nslide_num, title, subtitle, description, keyword(영문1단어) 키를 가진 JSON 배열만 출력해."
     
-    response = model.generate_content(prompt, generation_config={"response_mime_type": "application/json"})
+    print("🤖 AI 기획 생성 중...")
+    # JSON 형태로만 응답하도록 강제
+    response = model.generate_content(
+        prompt, 
+        generation_config={"response_mime_type": "application/json"}
+    )
+    
     slides_data = json.loads(response.text)
     if isinstance(slides_data, dict) and "slides" in slides_data:
         slides_data = slides_data["slides"]
 
+    # 폰트 다운로드 (캐싱 처리)
     font_path = "CustomFont.otf"
     if not os.path.exists(font_path):
+        print("📥 폰트 다운로드 중...")
         font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Korean/NotoSansCJKkr-Bold.otf"
-        with open(font_path, "wb") as f: f.write(requests.get(font_url).content)
+        with open(font_path, "wb") as f: 
+            f.write(requests.get(font_url).content)
 
     width, height = 1080, 1350
     title_font = ImageFont.truetype(font_path, 72)
@@ -82,22 +107,30 @@ def create_card_news(user_topic):
     desc_font = ImageFont.truetype(font_path, 32)
     
     image_paths = []
+    
+    print("🎨 카드뉴스 이미지 렌더링 중...")
     for idx, slide in enumerate(slides_data):
-        keyword = slide.get("keyword", "news")
+        keyword = slide.get("keyword", "news").strip()
         img_url = f"https://loremflickr.com/1080/1350/{keyword}"
+        
         try:
+            # 봇 차단 방지를 위한 User-Agent 헤더 추가
             headers = {'User-Agent': 'Mozilla/5.0'}
             img_data = requests.get(img_url, headers=headers, timeout=10).content
             bg = Image.open(BytesIO(img_data))
-        except:
+        except Exception as e:
+            print(f"⚠️ {idx+1}번 슬라이드 이미지 다운로드 실패, 단색 배경 대체: {e}")
             bg = Image.new("RGB", (width, height), color="#0F172A")
             
+        # 이미지 어둡게 처리 (글씨가 잘 보이도록)
         bg_dark = ImageEnhance.Brightness(bg).enhance(0.2)
         draw = ImageDraw.Draw(bg_dark)
         
+        # 외곽선 및 슬라이드 번호
         draw.rectangle([60, 60, width - 60, height - 60], outline="#FFFFFF", width=3)
         draw.text((width - 120, 120), f"{idx+1} / 5", fill="#9CA3AF", font=desc_font, anchor="rt")
         
+        # 텍스트 배치
         title_color = "#FBBF24" if idx == 0 else "#FFFFFF"
         draw_text_outline(draw, (width // 2, height // 3), str(slide.get("title", "")), title_font, title_color, "#000000", width - 240)
         draw_text_outline(draw, (width // 2, height // 2 + 100), str(slide.get("subtitle", "")), subtitle_font, "#FFFFFF", "#000000", width - 240)
@@ -107,29 +140,45 @@ def create_card_news(user_topic):
         bg_dark.save(filename)
         image_paths.append(filename)
     
+    print("✅ 이미지 렌더링 완료!")
     return image_paths
 
-# 5. 이메일 발송
+# ==========================================
+# 5. 생성된 이미지를 이메일로 발송 (Gmail)
+# ==========================================
 def send_email(topic, image_paths):
+    if not all([EMAIL_SENDER, EMAIL_PASSWORD, EMAIL_RECEIVER]):
+        print("⚠️ 이메일 환경변수가 누락되어 메일을 발송하지 않습니다.")
+        return
+
+    print("📧 이메일 발송 준비 중...")
     msg = MIMEMultipart()
     msg['From'] = EMAIL_SENDER
     msg['To'] = EMAIL_RECEIVER
-    msg['Subject'] = f"📢 [자동 발송] AI 카드뉴스: {topic}"
-    msg.attach(MIMEText(f"AI가 제작한 '{topic}' 카드뉴스입니다.", 'plain'))
+    msg['Subject'] = f"📢 [자동 발송] 오늘의 AI 뉴스 카드뉴스: {topic}"
+    msg.attach(MIMEText(f"안녕하세요.\n\nAI 공장이 오늘의 뉴스 [{topic}]를 기반으로 제작한 카드뉴스 5장을 첨부합니다.\n인스타그램에 바로 업로드해보세요!", 'plain'))
     
     for path in image_paths:
         with open(path, 'rb') as f:
             msg.attach(MIMEImage(f.read(), name=os.path.basename(path)))
             
-    server = smtplib.SMTP('smtp.gmail.com', 587)
-    server.starttls()
-    server.login(EMAIL_SENDER, EMAIL_PASSWORD)
-    server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
-    server.quit()
-    print("📧 이메일 발송 완료!")
+    try:
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(EMAIL_SENDER, EMAIL_PASSWORD)
+        server.sendmail(EMAIL_SENDER, EMAIL_RECEIVER, msg.as_string())
+        server.quit()
+        print("✅ 이메일 발송 완료!")
+    except Exception as e:
+        print(f"❌ 이메일 발송 실패: {e}")
 
+# ==========================================
+# 6. 메인 실행 블록
+# ==========================================
 if __name__ == "__main__":
     today_topic = get_today_news_topic()
-    print(f"주제: {today_topic}")
+    print(f"📰 오늘 선택된 뉴스 주제: {today_topic}")
+    
     images = create_card_news(today_topic)
     send_email(today_topic, images)
+    print("🎉 모든 자동화 프로세스 종료!")
