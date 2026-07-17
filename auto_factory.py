@@ -84,7 +84,7 @@ def create_card_news(user_topic):
     
     # [최신 규격] 모델명을 1.5-flash로 강제하고, 최신 제너레이션 문법 적용
     response = client.models.generate_content(
-        model='gemini-1.5-flash',
+        model='gemini-2.5-flash',
         contents=prompt,
         config=types.GenerateContentConfig(
             response_mime_type="application/json",
