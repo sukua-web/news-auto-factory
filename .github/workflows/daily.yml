@@ -33,4 +33,6 @@ jobs:
         EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
+        SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}   # 👈 이 줄이 있는지!
+        PEXELS_KEY: ${{ secrets.PEXELS_KEY }}     # 👈 이 줄이 있는지!
       run: python auto_factory.py
