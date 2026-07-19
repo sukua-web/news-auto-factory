@@ -24,7 +24,7 @@ jobs:
     - name: Install Dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install Pillow requests google-generativeai
+        pip install google-genai pillow
 
     # 4. 파이썬 스크립트 실행 (환경 변수 주입)
     - name: Run Auto Factory
