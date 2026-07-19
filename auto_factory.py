@@ -21,7 +21,7 @@ EMAIL_PASSWORD = os.environ.get("EMAIL_PASSWORD")
 EMAIL_RECEIVER = os.environ.get("EMAIL_RECEIVER")
 
 # 📌 2026년 기준 실무에서 가장 안정적인 최신 모델 라인업
-MODELS_TO_TRY = ['gemini-2.5-flash', 'gemini-2.0-flash', 'gemini-2.5-pro']
+MODELS_TO_TRY = ['gemini-2.0-flash', 'gemini-2.0-flash-lite', 'gemini-3.1-flash-lite', 'gemini-3.5-flash']
 
 # ==========================================
 # 2. 공통 유틸리티 (AI 요청 / JSON 클리닝)
