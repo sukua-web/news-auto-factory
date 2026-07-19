@@ -121,9 +121,10 @@ def question_selector_agent():
         }
 
 def writer_agent(kb_data):
-    """Step 2: 청사진을 바탕으로 실제 5장 원고 작성"""
+    """Step 2: 청사진을 바탕으로 실제 5장 원고 작성 (AI 쿼터 초과 시 로컬 청사진으로 무조건 완주)"""
     print("▶️ [Agent 2] Writer 가동")
     sys_inst = "당신은 4060 세대의 은퇴/돈 걱정을 해결하는 금융 전문 카피라이터입니다. 핵심 메시지를 명확하고 신뢰감 있게 표현하되, 각 슬라이드의 텍스트는 절대로 40자를 넘지 마세요."
+    
     prompt = f"""
     반드시 다음 JSON 구조로만 응답하세요. 다른 설명 텍스트는 절대 포함하지 마십시오.
     아래 질문과 청사진을 바탕으로 인스타그램 카드뉴스용 원고 5장을 작성하세요.
@@ -133,14 +134,32 @@ def writer_agent(kb_data):
     
     출력 형식 JSON 스키마 예시:
     [
-      {{"slide": 1, "text": "1장 표지 문구 작성 (도발적 훅)"}},
-      {{"slide": 2, "text": "2장 흔한 오해나 루머 폭로 내용"}},
-      {{"slide": 3, "text": "3장 팩트 체크 및 수치 기반의 진짜 진실"}},
-      {{"slide": 4, "text": "4장 구체적인 인물이나 예시 비교 계산"}},
-      {{"slide": 5, "text": "5장 지금 행동해야 할 사항 (CTA)"}}
+      {{"slide": 1, "text": "1장 표지 문구"}},
+      {{"slide": 2, "text": "2장 흔한 오해 내용"}},
+      {{"slide": 3, "text": "3장 팩트 체크 및 진실"}},
+      {{"slide": 4, "text": "4장 구체적인 비교 계산"}},
+      {{"slide": 5, "text": "5장 행동 지침 (CTA)"}}
     ]
     """
-    return ask_ai(prompt, sys_inst)
+    
+    # 지정하신 4개 모델 순서대로 호출 시도
+    ai_response = ask_ai(prompt, sys_inst)
+    
+    # 📌 [방어 로직] 4개 모델이 모두 쿼터 초과(429)로 원고를 못 가져왔을 때 작동
+    if ai_response is None:
+        print("⚠️ [🚨 API 쿼터 초과] 모든 지정 모델 호출에 실패했습니다. 로컬 청사진 데이터를 기반으로 원고를 자동 생성합니다.")
+        blueprint = kb_data.get('story_blueprint', {})
+        
+        # KB의 청사진 데이터를 매핑하여 Reviewer를 통과할 수 있는 5장 구조 강제 생성
+        ai_response = [
+            {"slide": 1, "text": blueprint.get("page1_hook", f"{kb_data['question']}의 진실")},
+            {"slide": 2, "text": blueprint.get("page2_misconception", "당장 눈앞의 이득만 보면 안 되는 이유")},
+            {"slide": 3, "text": blueprint.get("page3_truth", "알고 보면 엄청난 혜택이 숨어있습니다.")},
+            {"slide": 4, "text": blueprint.get("page4_example", "꼼꼼하게 비교해 보고 결정해야 합니다.")},
+            {"slide": 5, "text": blueprint.get("page5_cta", "지금 자세한 내용을 확인해 보세요.")}
+        ]
+        
+    return ai_response
 
 def reviewer_agent(draft_data):
     """Step 3: 원고 품질 및 가독성 검수"""
