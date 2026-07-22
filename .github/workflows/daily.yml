@@ -2,7 +2,7 @@ name: Run Card News Factory
 
 on:
   schedule:
-    - cron: '28 17 * * *' # 매일 아침 5시 30분 자동 실행 영국시간기준이라 9시간 뺌 (필요에 따라 조절)
+    - cron: '28 17 * * *' # 매일 한국시간 기준 실행 (UTC 기준)
   workflow_dispatch: # 수동 실행 버튼 제공
 
 jobs:
@@ -10,11 +10,11 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. 최신 버전의 checkout 액션 사용 (v3 ➡️ v4)
+    # 1. 최신 버전의 checkout 액션 사용
     - name: Checkout Repository
       uses: actions/checkout@v4
 
-    # 2. 최신 버전의 Python 설치 액션 사용 및 3.11 버전 지정 (v4 ➡️ v5)
+    # 2. 최신 버전의 Python 설치 액션 사용 및 3.11 버전 지정
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
@@ -33,6 +33,15 @@ jobs:
         EMAIL_SENDER: ${{ secrets.EMAIL_SENDER }}
         EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
         EMAIL_RECEIVER: ${{ secrets.EMAIL_RECEIVER }}
-        SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}   # 이 부분이 이미 잘 들어가 있다면
-        PEXELS_KEY: ${{ secrets.PEXELS_KEY }}     # 절대 수정할 필요 없습니다!
+        SERPAPI_KEY: ${{ secrets.SERPAPI_KEY }}
+        PEXELS_KEY: ${{ secrets.PEXELS_KEY }}
       run: python auto_factory.py
+
+    # 5. 사용한 질문 히스토리(used_questions.json) 자동 커밋 & 푸시
+    - name: Commit & Push updated used_questions.json
+      run: |
+        git config --global user.name "github-actions[bot]"
+        git config --global user.email "github-actions[bot]@users.noreply.github.com"
+        git add used_questions.json
+        git commit -m "chore: update used_questions.json history [skip ci]" || echo "No changes to commit"
+        git push
