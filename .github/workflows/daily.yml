@@ -2,12 +2,16 @@ name: Run Card News Factory
 
 on:
   schedule:
-    - cron: '28 17 * * *' # 매일 한국시간 기준 실행 (UTC 기준)
-  workflow_dispatch: # 수동 실행 버튼 제공
+    - cron: '28 17 * * *'
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    
+    # 👇 [추가할 부분] 봇에게 쓰기(Push) 권한을 부여합니다.
+    permissions:
+      contents: write
 
     steps:
     # 1. 최신 버전의 checkout 액션 사용
